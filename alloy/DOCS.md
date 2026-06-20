@@ -69,18 +69,26 @@ Alloy's UI/readiness endpoint is exposed on port `12345`
 
 ## Updating Alloy
 
-The Alloy binary is pinned and checksum-verified in `Dockerfile`. To bump:
+The Alloy binary is copied from the official `grafana/alloy` image, pinned by
+tag **and** digest in `Dockerfile`. **Renovate keeps it current automatically**
+— the GitHub Renovate instance on icecrown watches this repo and opens a PR
+bumping the `grafana/alloy` tag and its `@sha256` digest together. There are no
+checksums to maintain by hand; the digest guarantees binary integrity.
 
-1. Pick the new version from <https://github.com/grafana/alloy/releases>.
-2. Fetch the official checksums for the `linux-amd64` and `linux-arm64` zips:
+After a Renovate (or manual) bump, one deliberate manual step remains:
 
-   ```bash
-   gh api repos/grafana/alloy/releases/tags/vX.Y.Z \
-     --jq '.assets[] | select(.name=="SHA256SUMS") | .browser_download_url' \
-     | xargs curl -fsSL | grep -E 'alloy-linux-(amd64|arm64)\.zip$'
-   ```
+1. Bump `version:` in `config.yaml`. This is what surfaces the **Update** button
+   in Home Assistant. Renovate does not touch it, so the add-on only updates when
+   you choose to (HA add-ons update on demand, never silently).
+2. Merge. HA shows an update; installing it rebuilds the add-on locally against
+   the new digest-pinned binary.
 
-3. Update `ALLOY_VERSION` and the two `ALLOY_SHA256` values in `Dockerfile`.
-4. Bump `version:` in `config.yaml` (this is what surfaces the **Update** button
-   in Home Assistant).
-5. Commit and push. HA shows an update; installing it rebuilds locally.
+To bump manually instead of waiting for Renovate, edit the `grafana/alloy` tag
+in `Dockerfile` and refresh its digest:
+
+```bash
+docker buildx imagetools inspect grafana/alloy:vX.Y.Z | grep '^Digest:'
+```
+
+The Home Assistant base images in `build.yaml` are likewise digest-pinned and
+maintained by Renovate (grouped into one "home-assistant base images" PR).
