@@ -1,31 +1,29 @@
+# Declared before the first FROM so it stays in scope for the `FROM ${BUILD_FROM}`
+# stage below (the Supervisor passes it as --build-arg at build time).
 ARG BUILD_FROM
+
+# Grafana Alloy binary source — the official multi-arch grafana/alloy image,
+# pinned by tag + digest. Renovate's docker manager bumps the tag and the
+# @sha256 digest together, so there are no checksums to maintain by hand. The
+# digest is the multi-arch index, so each add-on arch (amd64/aarch64) resolves
+# to its own variant at build time. To bump, see alloy/DOCS.md ("Updating Alloy").
+FROM grafana/alloy:v1.17.0@sha256:41c41849989b7e054ccbadc17938ee1e5592fe26bfbc56ef3ffc109c0b0b2739 AS alloy
+
 FROM ${BUILD_FROM}
 
+# jq parses the add-on options in the s6 init script; ca-certificates lets Alloy
+# validate the (publicly-trusted) VictoriaLogs TLS endpoint it pushes to.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl bash jq unzip ca-certificates \
+    jq ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-ARG BUILD_ARCH
-# Grafana Alloy — pinned and checksum-verified against the official SHA256SUMS
-# for the release below. The binaries come straight from Grafana's GitHub
-# releases; the sha256sum -c check fails the build if the download is tampered
-# with or corrupted. To bump the version, see alloy/DOCS.md ("Updating Alloy").
-RUN set -eux; \
-    ALLOY_VERSION="1.17.0"; \
-    case "${BUILD_ARCH}" in \
-        amd64)   ALLOY_ARCH="linux-amd64"; ALLOY_SHA256="a905f3c750855323e12b23630150972956e24c993f0c9170ca2f0af4bd442d8e" ;; \
-        aarch64) ALLOY_ARCH="linux-arm64"; ALLOY_SHA256="169f2b3b0f0bff30b9fd7b8c924b950c4aa910e20f39979abbb510f1c3e9daf7" ;; \
-        *) echo "Unsupported architecture: ${BUILD_ARCH}" >&2; exit 1 ;; \
-    esac; \
-    curl -fsSL "https://github.com/grafana/alloy/releases/download/v${ALLOY_VERSION}/alloy-${ALLOY_ARCH}.zip" -o /tmp/alloy.zip; \
-    echo "${ALLOY_SHA256}  /tmp/alloy.zip" | sha256sum -c -; \
-    unzip /tmp/alloy.zip -d /tmp/alloy-extract; \
-    mv "/tmp/alloy-extract/alloy-${ALLOY_ARCH}" /usr/bin/alloy; \
-    chmod +x /usr/bin/alloy; \
-    rm -rf /tmp/alloy.zip /tmp/alloy-extract
+# Same official Alloy binary the release zip ships, copied from the digest-pinned
+# image above — integrity is guaranteed by the digest, no sha256sum -c needed.
+COPY --from=alloy /bin/alloy /usr/bin/alloy
 
 COPY rootfs /
 
+ARG BUILD_ARCH
 ARG BUILD_DATE
 ARG BUILD_VERSION
 LABEL \
