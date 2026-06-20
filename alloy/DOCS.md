@@ -90,5 +90,8 @@ in `Dockerfile` and refresh its digest:
 docker buildx imagetools inspect grafana/alloy:vX.Y.Z | grep '^Digest:'
 ```
 
-The Home Assistant base images in `build.yaml` are likewise digest-pinned and
-maintained by Renovate (grouped into one "home-assistant base images" PR).
+The Home Assistant base images in `build.yaml` use plain `:bookworm` tags — HA's
+add-on build config rejects `@sha256` digests in `build_from` (the Supervisor
+silently falls back to its default Alpine base if it sees one). They stay current
+on their own: the Supervisor builds with `--pull`, so every rebuild fetches the
+latest `bookworm` base.

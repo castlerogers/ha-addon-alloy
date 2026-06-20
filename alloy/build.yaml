@@ -1,6 +1,8 @@
-# Base images pinned by digest so Renovate (docker datasource, customManager in
-# renovate.json) keeps the bookworm digest fresh for security patches without a
-# surprise Debian-codename jump.
+# HA's add-on build config rejects @sha256 digests in build_from (the Supervisor
+# validates it against a tag-only regex and silently falls back to its default
+# Alpine base if it fails — which then breaks our apt-get). So pin the tag only.
+# The Supervisor builds with --pull, so each rebuild already fetches the current
+# bookworm base; no digest pin needed to stay fresh.
 build_from:
-  amd64: ghcr.io/home-assistant/amd64-base-debian:bookworm@sha256:84023298f975360b4350fe76118a1a5b117ff8f7ca5249d6398381659051aba3
-  aarch64: ghcr.io/home-assistant/aarch64-base-debian:bookworm@sha256:4ecdb87bbf2e24c220140aedefdc521f7e3c499bc116c886f432261dc247d2f8
+  amd64: ghcr.io/home-assistant/amd64-base-debian:bookworm
+  aarch64: ghcr.io/home-assistant/aarch64-base-debian:bookworm
