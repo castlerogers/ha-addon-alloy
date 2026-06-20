@@ -6,19 +6,6 @@
   "semanticCommits": "enabled",
   "timezone": "America/Chicago",
   "minimumReleaseAge": "3 days",
-  "customManagers": [
-    {
-      "customType": "regex",
-      "description": "Track the Home Assistant base images (tag + digest) in alloy/build.yaml",
-      "managerFilePatterns": [
-        "/^alloy/build\\.yaml$/"
-      ],
-      "matchStrings": [
-        ":\\s*(?<depName>ghcr\\.io/home-assistant/[^:@\\s]+):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]+)"
-      ],
-      "datasourceTemplate": "docker"
-    }
-  ],
   "packageRules": [
     {
       "description": "Grafana Alloy binary, copied from the digest-pinned grafana/alloy image in alloy/Dockerfile (handled by the native docker manager). After merging, bump version: in alloy/config.yaml to surface the Update button in Home Assistant — see alloy/DOCS.md.",
@@ -29,14 +16,6 @@
         "grafana/alloy"
       ],
       "changelogUrl": "https://github.com/grafana/alloy/releases"
-    },
-    {
-      "description": "Group the two per-arch HA base images into one PR — they bump together",
-      "matchPackageNames": [
-        "ghcr.io/home-assistant/amd64-base-debian",
-        "ghcr.io/home-assistant/aarch64-base-debian"
-      ],
-      "groupName": "home-assistant base images"
     }
   ]
 }
