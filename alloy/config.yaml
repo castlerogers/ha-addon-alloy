@@ -1,0 +1,37 @@
+name: Grafana Alloy (Homelab)
+version: "1.0.0"
+slug: alloy
+description: >-
+  Ship Home Assistant OS logs to the homelab VictoriaLogs instance via Grafana
+  Alloy (Loki push protocol). Reads the full systemd journal — Home Assistant
+  Core, Supervisor, all add-ons, Docker, and the host OS.
+url: https://github.com/castlerogers/ha-addon-alloy
+codeowners:
+  - "@castlerogers"
+arch:
+  - aarch64
+  - amd64
+init: false
+startup: services
+boot: auto
+# Grants the add-on read access to the host systemd journal (mounted at
+# /var/log/journal by the Supervisor). This is the whole point of the add-on.
+journald: true
+map:
+  - addon_config:rw
+ports:
+  12345/tcp: 12345
+ports_description:
+  12345/tcp: "Alloy debug UI / readiness endpoint"
+watchdog: "http://[HOST]:[PORT:12345]/-/ready"
+options:
+  loki_url: "https://victorialogs.example.com/insert/loki/api/v1/push"
+  host_label: homeassistant
+  log_level: info
+schema:
+  loki_url: url
+  host_label: str
+  log_level: "list(debug|info|warn|error)"
+  additional_config: "str?"
+stage: stable
+apparmor: false
