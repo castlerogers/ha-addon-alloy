@@ -22,6 +22,8 @@ Alloy tails the journal and forwards each entry to the configured Loki endpoint.
 loki_url: "https://victorialogs.<home_domain>/insert/loki/api/v1/push"
 host_label: homeassistant
 log_level: info
+exclude_syslog_identifiers:
+  - addon_03cabcc9_ring_mqtt
 ```
 
 | Option | Required | Default | Description |
@@ -29,7 +31,36 @@ log_level: info
 | `loki_url` | yes | — | Loki push endpoint. For VictoriaLogs use the `/insert/loki/api/v1/push` path. Use the same `victorialogs.<home_domain>` FQDN the Grafana datasource uses. |
 | `host_label` | no | `homeassistant` | Value of the `host` label attached to every log line. Matches the homelab `cr_alloy` convention so HAOS shows up alongside every other host in VictoriaLogs queries/dashboards. |
 | `log_level` | no | `info` | Alloy's own log verbosity (`debug`, `info`, `warn`, `error`). |
+| `exclude_syslog_identifiers` | no | `[]` | List of syslog identifiers whose journal entries are dropped before shipping (relabel `action=drop`). Use to silence chatty add-ons. See [Excluding noisy add-ons](#excluding-noisy-add-ons). |
 | `additional_config` | no | — | Raw Alloy config appended verbatim to the generated config — escape hatch for extra sources/pipelines. |
+
+### Excluding noisy add-ons
+
+Some add-ons are extremely chatty and pollute the logs — the worst offenders also
+write everything to **stderr**, which journald stamps as priority `err`, so every
+line lands in VictoriaLogs as `level=error` and drowns out genuine errors across
+the whole fleet. (Ring-MQTT is the canonical example: ~36k lines/day, 100% tagged
+`error`, none of them actually errors.)
+
+Add each offender's syslog identifier to `exclude_syslog_identifiers` and its
+journal entries are dropped before they're shipped — they stay visible in the
+add-on's own log viewer, they just don't reach VictoriaLogs:
+
+```yaml
+exclude_syslog_identifiers:
+  - addon_03cabcc9_ring_mqtt
+```
+
+Find the exact identifier in VictoriaLogs — it's the `syslog_identifier` label
+(add-ons appear as `addon_<hash>_<slug>`):
+
+```
+host:homeassistant | stats by (syslog_identifier) count() as n | sort by (n desc)
+```
+
+Each value is treated as an anchored regex, so `addon_.*_ring_mqtt` works too if
+you'd rather not pin the install-specific hash. After editing, **Save** and
+**Restart** the add-on — the Alloy config is regenerated on start.
 
 ### TLS
 
