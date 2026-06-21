@@ -14,6 +14,25 @@ HOST_LABEL=$(jq -r '.host_label // "homeassistant"' "${OPTIONS_FILE}")
 LOG_LEVEL=$(jq -r '.log_level // "info"' "${OPTIONS_FILE}")
 ADDITIONAL_CONFIG=$(jq -r '.additional_config // ""' "${OPTIONS_FILE}")
 
+# --- Build relabel drop rules for excluded syslog identifiers ---
+# Each entry in exclude_syslog_identifiers becomes a relabel rule that drops
+# every journal entry whose syslog identifier matches (anchored regex). Use the
+# exact identifier seen in VictoriaLogs, e.g. an add-on slug like
+# 'addon_03cabcc9_ring_mqtt'. Dropped lines are still visible in the add-on's
+# own log viewer; they just aren't shipped to VictoriaLogs.
+DROP_RULES=""
+EXCLUDED_IDS=""
+while IFS= read -r ident; do
+    [ -z "${ident}" ] && continue
+    EXCLUDED_IDS="${EXCLUDED_IDS} ${ident}"
+    DROP_RULES="${DROP_RULES}
+  rule {
+    source_labels = [\"__journal_syslog_identifier\"]
+    regex         = \"${ident}\"
+    action        = \"drop\"
+  }"
+done < <(jq -r '.exclude_syslog_identifiers[]? // empty' "${OPTIONS_FILE}")
+
 # --- Detect journal path (persistent vs volatile) ---
 JOURNAL_PATH="/var/log/journal"
 if [ ! -d "${JOURNAL_PATH}" ] || [ -z "$(ls -A "${JOURNAL_PATH}" 2>/dev/null)" ]; then
@@ -26,6 +45,7 @@ echo " Loki URL:     ${LOKI_URL}"
 echo " host label:   ${HOST_LABEL}"
 echo " Journal path: ${JOURNAL_PATH}"
 echo " Log level:    ${LOG_LEVEL}"
+echo " Excluded ids:${EXCLUDED_IDS:- (none)}"
 echo "-----------------------------------------------------------"
 
 # The heredoc is unquoted so ${VAR} expands; literal Alloy '$' is written as \$
@@ -79,7 +99,7 @@ loki.relabel "journal" {
   rule {
     source_labels = ["__journal_priority_keyword"]
     target_label  = "level"
-  }
+  }${DROP_RULES}
 }
 
 // --- Drop empty lines, then ship ---
