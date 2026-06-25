@@ -1,6 +1,13 @@
 #!/usr/bin/with-contenv bash
 # Long-running Alloy service. Reads the config rendered by init-alloy.
+# --disable-reporting suppresses Alloy's anonymous usage report to
+# stats.grafana.org. That endpoint is blocked at our egress (resolves to
+# 0.0.0.0), so the ~4-hourly POST fails and floods the add-on log — HAOS tags
+# add-on stdout as level=error, so it lands in VictoriaLogs as thousands of
+# spurious error lines/day. It carries no telemetry we want; log shipping is
+# unaffected.
 exec /usr/bin/alloy run \
+    --disable-reporting \
     --server.http.listen-addr=0.0.0.0:12345 \
     --storage.path=/data/alloy \
     /etc/alloy/config.alloy
