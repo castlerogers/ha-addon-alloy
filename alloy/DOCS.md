@@ -23,7 +23,7 @@ loki_url: "https://victorialogs.<home_domain>/insert/loki/api/v1/push"
 host_label: homeassistant
 log_level: info
 exclude_syslog_identifiers:
-  - addon_03cabcc9_ring_mqtt
+  - app_03cabcc9_ring_mqtt
 ```
 
 | Option | Required | Default | Description |
@@ -31,36 +31,48 @@ exclude_syslog_identifiers:
 | `loki_url` | yes | — | Loki push endpoint. For VictoriaLogs use the `/insert/loki/api/v1/push` path. Use the same `victorialogs.<home_domain>` FQDN the Grafana datasource uses. |
 | `host_label` | no | `homeassistant` | Value of the `host` label attached to every log line. Matches the homelab `cr_alloy` convention so HAOS shows up alongside every other host in VictoriaLogs queries/dashboards. |
 | `log_level` | no | `info` | Alloy's own log verbosity (`debug`, `info`, `warn`, `error`). |
-| `exclude_syslog_identifiers` | no | `[]` | List of syslog identifiers whose journal entries are dropped before shipping (relabel `action=drop`). Use to silence chatty add-ons. See [Excluding noisy add-ons](#excluding-noisy-add-ons). |
+| `exclude_syslog_identifiers` | no | `[]` | List of syslog identifiers whose journal entries are dropped before shipping (relabel `action=drop`). Use to hold down log volume from very chatty add-ons. See [Excluding noisy add-ons](#excluding-noisy-add-ons). |
 | `additional_config` | no | — | Raw Alloy config appended verbatim to the generated config — escape hatch for extra sources/pipelines. |
 
 ### Excluding noisy add-ons
 
-Some add-ons are extremely chatty and pollute the logs — the worst offenders also
-write everything to **stderr**, which journald stamps as priority `err`, so every
-line lands in VictoriaLogs as `level=error` and drowns out genuine errors across
-the whole fleet. (Ring-MQTT is the canonical example: ~36k lines/day, 100% tagged
-`error`, none of them actually errors.)
-
-Add each offender's syslog identifier to `exclude_syslog_identifiers` and its
-journal entries are dropped before they're shipped — they stay visible in the
-add-on's own log viewer, they just don't reach VictoriaLogs:
+Some add-ons are extremely chatty — Ring-MQTT emits ~47k lines/day of routine
+device telemetry. Add each offender's syslog identifier to
+`exclude_syslog_identifiers` and its journal entries are dropped before they're
+shipped. They stay visible in the add-on's own log viewer; they just don't reach
+VictoriaLogs:
 
 ```yaml
 exclude_syslog_identifiers:
-  - addon_03cabcc9_ring_mqtt
+  - app_03cabcc9_ring_mqtt
 ```
 
+This is a **log-volume** decision, nothing more. It used to also be the only way
+to keep the fleet error tripwire honest, because stderr-logging add-ons landed in
+VictoriaLogs as `level=error`; since 1.2.0 container output carries `stream`
+instead of `level`, so a chatty add-on no longer distorts error counts and there
+is no signal-quality reason to drop it. See [Labels](#labels).
+
 Find the exact identifier in VictoriaLogs — it's the `syslog_identifier` label
-(add-ons appear as `addon_<hash>_<slug>`):
+(add-ons appear as `app_<hash>_<slug>`):
 
 ```
 host:homeassistant | stats by (syslog_identifier) count() as n | sort by (n desc)
 ```
 
-Each value is treated as an anchored regex, so `addon_.*_ring_mqtt` works too if
-you'd rather not pin the install-specific hash. After editing, **Save** and
-**Restart** the add-on — the Alloy config is regenerated on start.
+Each value is treated as an anchored regex, so `app_.*_ring_mqtt` works too if
+you'd rather not pin the install-specific hash.
+
+An entry that starts with `addon_` or `app_` is compiled to match **either**
+prefix. Supervisor 2026.07 renamed add-on containers and syslog identifiers from
+`addon_<hash>_<slug>` to `app_<hash>_<slug>`, and because these regexes are fully
+anchored, a rule pinned to the old prefix silently stopped matching — the add-on
+resumed shipping with nothing to indicate the rule had gone dead. Either spelling
+now works and survives the rename in both directions.
+
+After editing, **Save** and **Restart** the add-on — the Alloy config is
+regenerated on start. The startup banner echoes `Excluded ids:` so you can
+confirm what the add-on actually read.
 
 ### TLS
 
@@ -83,13 +95,35 @@ Every log line carries:
 | `syslog_identifier` | `__journal_syslog_identifier` | e.g. `homeassistant`, add-on slug. |
 | `transport` | `__journal__transport` | `journal`, `stdout`, etc. |
 | `container_name` | `__journal_container_name` | Docker container, when present. |
-| `level` | `__journal_priority_keyword` | `info`, `error`, … |
+| `level` | `__journal_priority_keyword` | Severity — `info`, `error`, … **Non-container entries only.** |
+| `stream` | `__journal_priority_keyword` | `stdout` / `stderr`. **Container entries only.** |
+
+### Why `level` and `stream` are mutually exclusive
+
+Journal `PRIORITY` means two different things depending on who wrote the entry.
+For a real systemd unit it is severity. For an entry emitted by docker's journald
+log driver — these are the ones carrying `container_name` — it only records which
+stream the line came from: stdout is stamped `info` (6), stderr `error` (3),
+whatever the line actually says.
+
+Labelling that as `level` inverts the signal. A container that logs everything to
+stderr reads as 100% errors, while a container's genuine errors written to stdout
+read as `info`. So priority is promoted to `level` only for non-container
+entries; container entries get `stream` instead. That mirrors the homelab
+`cr_alloy` convention, where `job:docker` carries `stream` and `level` is
+reserved for real severity — and it keeps the fleet-wide
+`level:(error OR crit)` tripwire meaningful.
+
+Practical consequence: to find what an add-on wrote to stderr, query
+`stream:stderr`, not `level:error` — and read it as "written to stderr", not "is
+an error". To find actual problems in an add-on, match on content.
 
 Example VictoriaLogs / LogsQL queries:
 
 ```
 host:homeassistant
-host:homeassistant AND level:error
+host:homeassistant AND level:error                     # host/systemd severity
+host:homeassistant AND stream:stderr                   # container stderr output
 host:homeassistant AND syslog_identifier:homeassistant
 ```
 

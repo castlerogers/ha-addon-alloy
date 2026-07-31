@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.2.0
+
+- **Container journal entries now carry `stream`, not `level`.** For a real
+  systemd unit, journal `PRIORITY` is severity. For an entry written by docker's
+  journald log driver (these carry `CONTAINER_NAME`) it only encodes which
+  stream the line came from — stdout is stamped `info` (6), stderr `error` (3) —
+  regardless of what the line says. Promoting that to `level` inverted the
+  signal: a chatty stderr logger read as 100% errors, while a container's real
+  errors on stdout read as `info`. Priority is now promoted to `level` only for
+  non-container entries; container entries get `stream` = `stdout`/`stderr`,
+  matching the homelab `cr_alloy` convention where `job:docker` carries `stream`
+  and `level` is reserved for actual severity.
+
+  This keeps the fleet-wide `level:(error OR crit)` tripwire honest. It also
+  means silencing an add-on via `exclude_syslog_identifiers` becomes purely a
+  log-volume decision — it is no longer a prerequisite for a trustworthy error
+  count, so previously-excluded add-ons can be shipped again if you want their
+  logs back.
+
+  **Breaking for queries:** `host:homeassistant level:error` no longer matches
+  add-on/container output. Use `stream:stderr` for that — and read it as
+  "written to stderr", not "is an error".
+
+- **`exclude_syslog_identifiers` entries now match either add-on prefix.**
+  Supervisor 2026.07 renamed add-on containers and syslog identifiers from
+  `addon_<hash>_<slug>` to `app_<hash>_<slug>`. Relabel regexes are fully
+  anchored, so an entry pinned to one prefix silently stopped matching across
+  that rename — the add-on simply resumed shipping, with nothing to indicate the
+  rule had gone dead (castlerogers/infra#2110: ~78k spurious error lines in 24h).
+  An `addon_`- or `app_`-prefixed entry is now compiled to `(addon|app)_<rest>`
+  and matches either. Entries that aren't add-on identifiers are unchanged.
+
 ## 1.1.1
 
 - Pass `--disable-reporting` to `alloy run` to suppress Alloy's anonymous usage
