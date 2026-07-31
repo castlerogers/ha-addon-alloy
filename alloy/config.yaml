@@ -1,5 +1,5 @@
 name: Grafana Alloy (Homelab)
-version: "1.1.1"
+version: "1.2.0"
 slug: alloy
 description: >-
   Ship Home Assistant OS logs to the homelab VictoriaLogs instance via Grafana
