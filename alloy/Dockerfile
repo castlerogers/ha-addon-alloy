@@ -7,7 +7,7 @@ ARG BUILD_FROM
 # @sha256 digest together, so there are no checksums to maintain by hand. The
 # digest is the multi-arch index, so each add-on arch (amd64/aarch64) resolves
 # to its own variant at build time. To bump, see alloy/DOCS.md ("Updating Alloy").
-FROM grafana/alloy:v1.17.0@sha256:41c41849989b7e054ccbadc17938ee1e5592fe26bfbc56ef3ffc109c0b0b2739 AS alloy
+FROM grafana/alloy:v1.20.1@sha256:2aa2099af76c0098d4af7a4d6e48f86cb66dc1a000222ad927a1c67c6542d13f AS alloy
 
 FROM ${BUILD_FROM}
 
